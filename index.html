@@ -13281,11 +13281,11 @@ function exportPurchaseForm(useShort, wordCount, fontSize) {
     }
     
     // ============================================
-    // === نظام البحث الذكي (عبر وسيط OpenRouter - Llama 3.3) ===
+    // === نظام البحث الذكي (AI Smart Search) ===
     // ============================================
     
-    // ⚠️ ضع مفتاح OpenRouter الجديد هنا (الذي يبدأ بـ sk-or-v1-...)
-    const OPENROUTER_API_KEY = "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";
+    // ⚠️ ضع مفتاحك هنا بين علامتي التنصيص (لقد وضعت مفتاحك الذي أرسلته لي، لكن يفضل تغييره لاحقاً للأمان)
+    const GEMINI_API_KEY = "AIzaSyDiDh1QxtkplGTLgzgs1NyKJgJ4d4Yh8Sg";
 
     function openAiSearchModal() {
         document.getElementById('aiSearchModal').style.display = 'flex';
@@ -13304,8 +13304,8 @@ function exportPurchaseForm(useShort, wordCount, fontSize) {
             return;
         }
 
-        if(OPENROUTER_API_KEY === "ضع_مفتاح_openrouter_هنا" || OPENROUTER_API_KEY === "") {
-             alert("لم تقم بوضع مفتاح OpenRouter API! يرجى الحصول عليه من openrouter.ai وإضافته.");
+        if(GEMINI_API_KEY === "ضع_مفتاح_API_الخاص_بك_هنا" || GEMINI_API_KEY === "") {
+             alert("لم تقم بوضع مفتاح Gemini API في الكود! يرجى إضافته ليعمل البحث الذكي.");
              return;
         }
 
@@ -13313,53 +13313,48 @@ function exportPurchaseForm(useShort, wordCount, fontSize) {
         btn.innerHTML = "⏳ جاري التفكير...";
         btn.disabled = true;
 
-        // تجهيز قائمة المواد من المخزن
+        // نحضر قائمة الأسماء من قاعدة البيانات الحالية
         const availableItems = inventoryDB.map(item => item.name).join(' | ');
 
-        const promptText = "أنت صيدلي خبير ومساعد ذكي في مستشفى عراقي. المستخدم يبحث عن مادة طبية بوصفها التالي: " + description + "\nهذه هي قائمة المواد المتاحة فقط في مخزننا:\n" + availableItems + "\nبناءً على الوصف، اختر اسم المادة الأقرب والأكثر دقة من القائمة أعلاه.\nالقاعدة الصارمة: أرجع اسم المادة فقطططط كما هو مكتوب في القائمة تماماً، بدون أي كلمة إضافية، وبدون أي شرح. إذا لم تجد أي مادة تطابق الوصف، أرجع كلمة غير_موجود فقط.";
+        // نجهز "تلقينة" (Prompt) دقيقة للذكاء الاصطناعي
+        const promptText = "أنت مساعد ذكي في صيدلية مستشفى.\nالمستخدم يبحث عن مادة طبية بوصفها التالي: " + description + "\nهذه هي قائمة المواد المتاحة فقط:\n" + availableItems + "\nبناءً على الوصف، اختر اسم المادة الأقرب والأكثر دقة من القائمة أعلاه.\nالقاعدة الصارمة: أرجع اسم المادة فقطططط كما هو مكتوب في القائمة، بدون أي كلام إضافي أو شرح.\nإذا لم تجد أي مادة تطابق الوصف، أرجع كلمة غير_موجود فقط.";
 
         try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            // ✅ تم تصحيح اسم النموذج هنا إلى gemini-2.0-flash وهو الأحدث والأسرع
+            const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + GEMINI_API_KEY;
+            
+            const response = await fetch(apiUrl, {
                 method: "POST",
-                headers: {
-                    "Authorization": "Bearer " + OPENROUTER_API_KEY,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://my-hospital-app.local", 
-                    "X-Title": "Medical Inventory System"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    // استخدام نموذج Llama 3.3 المجاني والمستقر جداً (بديل Gemini)
-                    "model": "meta-llama/llama-3.3-70b-instruct:free", 
-                    "messages": [
-                        { "role": "user", "content": promptText }
-                    ],
-                    "temperature": 0.1
+                    contents: [{ parts: [{ text: promptText }] }],
+                    generationConfig: { temperature: 0.1 } 
                 })
             });
 
             const data = await response.json();
             
-            // قراءة الخطأ بالتفصيل وعرضه لكي نعرف المشكلة فوراً
+            // قراءة الأخطاء إن وجدت بشكل دقيق
             if (data.error) {
-                alert("تم رفض الطلب من السيرفر!\nالسبب: " + (data.error.message || JSON.stringify(data.error)));
-                return;
+                throw new Error(data.error.message);
             }
 
-            let aiResult = data.choices[0].message.content.trim();
+            let aiResult = data.candidates[0].content.parts[0].text.trim();
 
             if (aiResult && !aiResult.includes("غير_موجود")) {
                 closeAiSearchModal();
+                // نضع النتيجة في مربع البحث الأساسي ونستدعي حدث الإدخال لتظهر الاقتراحات
                 const mainSearchInput = document.getElementById("searchInput");
                 mainSearchInput.value = aiResult;
-                mainSearchInput.dispatchEvent(new Event('input')); 
+                mainSearchInput.dispatchEvent(new Event('input'));
                 mainSearchInput.focus();
             } else {
-                alert("للأسف، لم يتعرف الذكاء الاصطناعي على مادة تطابق هذا الوصف في مخزنك.");
+                alert("للأسف، لم يتعرف النظام على مادة تطابق هذا الوصف في قاعدة بياناتك الحالية.");
             }
 
         } catch (error) {
-            console.error("AI Error:", error);
-            alert("حدث خطأ في الاتصال بالإنترنت أو المتصفح منع الاتصال.\nالتفاصيل: " + error.message);
+            console.error("تفاصيل الخطأ الفنية:", error);
+            alert("فشل الاتصال بخوادم الذكاء الاصطناعي! \nالسبب الدقيق: " + error.message);
         } finally {
             btn.innerHTML = "🔍 ابحث لي";
             btn.disabled = false;
